@@ -21,6 +21,13 @@ import {
   logAllBones,
   EyelidBones,
 } from '@/lib/eyeTracking'
+import {
+  PoseData,
+  BodyBones,
+  findBodyBones,
+  applyPoseToBones,
+  logBodyBones,
+} from '@/lib/poseTracking'
 
 // Loading indicator component
 function Loader() {
@@ -52,10 +59,10 @@ export const AVATARS = {
     name: 'Avatar (Fast)',
     path: '/avatars/avatar.glb',
     // Head-only view for Ready Player Me avatar
-    position: [-0.09, -4.73, -3.30] as [number, number, number],
+    position: [-0.09, -4.73, -3.66] as [number, number, number],
     scale: 3.1,
-    cameraZoom: 500,
-    cameraY: 0.35,
+    cameraZoom: 225,
+    cameraY: -0.02,
   },
   'doll-ramen': {
     name: 'Doll Ramen (ARKit) - 87MB',
@@ -64,6 +71,14 @@ export const AVATARS = {
     scale: 2.9,
     cameraZoom: 500,
     cameraY: 0.18,
+  },
+  'spartan-halo': {
+    name: 'Spartan Armor (Halo)',
+    path: '/avatars/spartan_halo.glb',
+    position: [-0.09, -4.93, -3.66] as [number, number, number],
+    scale: 2.1,
+    cameraZoom: 225,
+    cameraY: 0.46,
   },
 } as const
 
@@ -86,10 +101,11 @@ interface AvatarModelProps {
   avatarKey: AvatarKey
   blendshapes: BlendshapeData
   headRotation?: { x: number; y: number; z: number }
+  poseData?: PoseData | null
   settings: AvatarSettings
 }
 
-function AvatarModel({ avatarKey, blendshapes, headRotation, settings }: AvatarModelProps) {
+function AvatarModel({ avatarKey, blendshapes, headRotation, poseData, settings }: AvatarModelProps) {
   const avatarConfig = AVATARS[avatarKey]
   const { scene } = useGLTF(avatarConfig.path)
   const meshRef = useRef<THREE.Object3D>(null)
@@ -98,10 +114,14 @@ function AvatarModel({ avatarKey, blendshapes, headRotation, settings }: AvatarM
   const leftEyeBoneRef = useRef<THREE.Bone | null>(null)
   const rightEyeBoneRef = useRef<THREE.Bone | null>(null)
   const eyelidBonesRef = useRef<EyelidBones>({ leftUpper: null, leftLower: null, rightUpper: null, rightLower: null })
-  const hasLoggedRef = useRef(false)
+  const bodyBonesRef = useRef<BodyBones | null>(null)
+  const lastAvatarRef = useRef<string>('')
 
   // Find mesh with morph targets, create mapping, and find eye/eyelid bones
   useEffect(() => {
+    const isNewAvatar = lastAvatarRef.current !== avatarConfig.path
+    lastAvatarRef.current = avatarConfig.path
+
     let foundMesh: THREE.Mesh | null = null
 
     scene.traverse((child) => {
@@ -115,10 +135,9 @@ function AvatarModel({ avatarKey, blendshapes, headRotation, settings }: AvatarM
       const mesh = foundMesh as THREE.Mesh
       blendshapeMappingRef.current = createBlendshapeMapping(mesh.morphTargetDictionary)
 
-      // Log debug info once
-      if (!hasLoggedRef.current) {
-        hasLoggedRef.current = true
-        console.log(`Loaded avatar: ${avatarConfig.path}`)
+      // Log debug info for each new avatar
+      if (isNewAvatar) {
+        console.log(`\n========== Loaded avatar: ${avatarConfig.path} ==========`)
         logMorphTargets(mesh.morphTargetDictionary)
         logMappingCoverage(blendshapeMappingRef.current, mesh.morphTargetDictionary)
       }
@@ -135,7 +154,8 @@ function AvatarModel({ avatarKey, blendshapes, headRotation, settings }: AvatarM
     const eyelidBones = findEyelidBones(scene)
     eyelidBonesRef.current = eyelidBones
     
-    if (!hasLoggedRef.current) {
+    // Always log bone info for new avatars
+    if (isNewAvatar) {
       if (eyeBones.leftEye || eyeBones.rightEye) {
         console.log('Eye bones found:', {
           leftEye: eyeBones.leftEye?.name,
@@ -158,6 +178,11 @@ function AvatarModel({ avatarKey, blendshapes, headRotation, settings }: AvatarM
       }
 
       logAllBones(scene)
+      
+      // Find body bones for pose tracking
+      const foundBodyBones = findBodyBones(scene)
+      bodyBonesRef.current = foundBodyBones
+      logBodyBones(foundBodyBones)
     }
   }, [scene, avatarConfig.path])
 
@@ -189,6 +214,12 @@ function AvatarModel({ avatarKey, blendshapes, headRotation, settings }: AvatarM
     if (eyelidBones.leftUpper || eyelidBones.rightUpper) {
       const eyelidState = extractEyelidState(blendshapes)
       applyEyelidBlink(eyelidState, eyelidBones, 0.7) // Fast response for blinks
+    }
+
+    // Apply body pose tracking if pose data and body bones are available
+    const bodyBones = bodyBonesRef.current
+    if (poseData && bodyBones) {
+      applyPoseToBones(poseData, bodyBones, 0.3)
     }
 
     // Apply head rotation if available
@@ -225,6 +256,7 @@ interface AvatarPanelProps {
   selectedAvatar: AvatarKey
   blendshapes: BlendshapeData
   headRotation?: { x: number; y: number; z: number }
+  poseData?: PoseData | null
   settings: AvatarSettings
   onSettingsChange: (settings: AvatarSettings) => void
   debugMode: boolean
@@ -234,6 +266,7 @@ export function AvatarPanel({
   selectedAvatar,
   blendshapes,
   headRotation,
+  poseData,
   settings,
   onSettingsChange,
   debugMode,
@@ -284,6 +317,7 @@ export function AvatarPanel({
               avatarKey={selectedAvatar}
               blendshapes={blendshapes}
               headRotation={headRotation}
+              poseData={poseData}
               settings={settings}
             />
           </Suspense>

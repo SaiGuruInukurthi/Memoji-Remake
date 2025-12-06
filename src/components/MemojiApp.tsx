@@ -1,18 +1,26 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { FaceLandmarkerResult, PoseLandmarkerResult } from '@mediapipe/tasks-vision'
 import { useWebcam } from '@/hooks/useWebcam'
 import { useFaceLandmarker } from '@/hooks/useFaceLandmarker'
+import { usePoseLandmarker } from '@/hooks/usePoseLandmarker'
 import { CameraPanel } from '@/components/CameraPanel'
 import { AvatarPanel, AVATARS, AvatarKey, AvatarSettings, getDefaultSettings } from '@/components/AvatarPanel'
 import { extractBlendshapes, BlendshapeData } from '@/lib/blendshapes'
+import { extractPoseData, PoseData } from '@/lib/poseTracking'
 
 export default function MemojiApp() {
   const [selectedAvatar, setSelectedAvatar] = useState<AvatarKey>('avatar')
   const [blendshapes, setBlendshapes] = useState<BlendshapeData>({})
   const [headRotation, setHeadRotation] = useState({ x: 0, y: 0, z: 0 })
+  const [poseData, setPoseData] = useState<PoseData | null>(null)
   const [fps, setFps] = useState(0)
   const [debugMode, setDebugMode] = useState(false) // Debug mode OFF by default
+  const [bodyTrackingEnabled, setBodyTrackingEnabled] = useState(false) // Body tracking OFF - needs calibration
+  const [showOverlay, setShowOverlay] = useState(false) // MediaPipe overlay toggle
+  const [faceResult, setFaceResult] = useState<FaceLandmarkerResult | null>(null)
+  const [poseResult, setPoseResult] = useState<PoseLandmarkerResult | null>(null)
   const [avatarSettings, setAvatarSettings] = useState<AvatarSettings>(() => getDefaultSettings('avatar'))
   const animationRef = useRef<number | null>(null)
   const fpsRef = useRef<number[]>([])
@@ -20,6 +28,7 @@ export default function MemojiApp() {
 
   const { videoRef, isReady: webcamReady, error: webcamError, aspectRatio } = useWebcam()
   const { faceLandmarker, isLoading: landmarkerLoading, error: landmarkerError, detectFace } = useFaceLandmarker()
+  const { poseLandmarker, isLoading: poseLoading, error: poseError, detectPose } = usePoseLandmarker()
 
   // Reset settings when avatar changes
   const handleAvatarChange = (newAvatar: AvatarKey) => {
@@ -34,7 +43,9 @@ export default function MemojiApp() {
       return
     }
 
+    // Face detection
     const result = detectFace(videoRef.current)
+    setFaceResult(result) // Store for overlay
 
     if (result) {
       // Extract blendshapes
@@ -61,6 +72,18 @@ export default function MemojiApp() {
       }
     }
 
+    // Pose detection (if enabled and landmarker ready)
+    if (bodyTrackingEnabled && poseLandmarker) {
+      const poseRes = detectPose(videoRef.current)
+      setPoseResult(poseRes) // Store for overlay
+      if (poseRes) {
+        const pose = extractPoseData(poseRes)
+        setPoseData(pose)
+      }
+    } else {
+      setPoseResult(null)
+    }
+
     // Calculate FPS
     const now = performance.now()
     const delta = now - lastTimeRef.current
@@ -73,7 +96,7 @@ export default function MemojiApp() {
     setFps(Math.round(avgFps))
 
     animationRef.current = requestAnimationFrame(runDetection)
-  }, [faceLandmarker, detectFace, videoRef])
+  }, [faceLandmarker, detectFace, poseLandmarker, detectPose, bodyTrackingEnabled, videoRef])
 
   // Start detection when ready
   useEffect(() => {
@@ -88,8 +111,8 @@ export default function MemojiApp() {
     }
   }, [webcamReady, faceLandmarker, runDetection])
 
-  const isLoading = landmarkerLoading
-  const error = webcamError || landmarkerError
+  const isLoading = landmarkerLoading || poseLoading
+  const error = webcamError || landmarkerError || poseError
 
   return (
     <div className="h-screen flex flex-col bg-gradient-to-b from-gray-900 to-black p-4">
@@ -100,7 +123,7 @@ export default function MemojiApp() {
         </h1>
 
         <div className="flex items-center gap-4">
-          {/* Debug mode toggle - uncomment to enable debug controls
+          {/* Debug mode toggle */}
           <button
             onClick={() => setDebugMode(!debugMode)}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
@@ -111,7 +134,30 @@ export default function MemojiApp() {
           >
             🎛️ Debug {debugMode ? 'ON' : 'OFF'}
           </button>
-          */}
+
+          {/* Body tracking toggle */}
+          <button
+            onClick={() => setBodyTrackingEnabled(!bodyTrackingEnabled)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              bodyTrackingEnabled 
+                ? 'bg-purple-600 text-white' 
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            🦴 Body {bodyTrackingEnabled ? 'ON' : 'OFF'}
+          </button>
+
+          {/* Overlay toggle */}
+          <button
+            onClick={() => setShowOverlay(!showOverlay)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              showOverlay 
+                ? 'bg-cyan-600 text-white' 
+                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+            }`}
+          >
+            👁️ Overlay {showOverlay ? 'ON' : 'OFF'}
+          </button>
 
           {/* Avatar selector dropdown */}
           <div className="flex items-center gap-2">
@@ -135,6 +181,11 @@ export default function MemojiApp() {
           {/* FPS counter */}
           <div className="text-sm text-gray-500">
             {fps} FPS
+          </div>
+
+          {/* Blink debug display */}
+          <div className="text-sm text-gray-400 font-mono">
+            L: {(blendshapes['eyeBlinkLeft'] ?? 0).toFixed(2)} | R: {(blendshapes['eyeBlinkRight'] ?? 0).toFixed(2)}
           </div>
 
           {/* Status indicator */}
@@ -167,6 +218,9 @@ export default function MemojiApp() {
           aspectRatio={aspectRatio}
           isReady={webcamReady}
           error={webcamError}
+          showOverlay={showOverlay}
+          faceResult={faceResult}
+          poseResult={poseResult}
         />
 
         {/* Avatar Panel */}
@@ -174,6 +228,7 @@ export default function MemojiApp() {
           selectedAvatar={selectedAvatar}
           blendshapes={blendshapes}
           headRotation={headRotation}
+          poseData={poseData}
           settings={avatarSettings}
           onSettingsChange={setAvatarSettings}
           debugMode={debugMode}
@@ -182,7 +237,7 @@ export default function MemojiApp() {
 
       {/* Footer */}
       <footer className="mt-4 text-center text-xs text-gray-600">
-        MediaPipe FaceLandmarker + Three.js + Next.js
+        MediaPipe FaceLandmarker + PoseLandmarker + Three.js + Next.js
       </footer>
     </div>
   )

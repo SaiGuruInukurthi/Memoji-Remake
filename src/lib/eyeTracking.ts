@@ -238,4 +238,18 @@ export function logAllBones(scene: THREE.Object3D): void {
     }
   })
   console.log('All bones in scene:', bones)
+  
+  // Log bones relevant for body tracking
+  const bodyKeywords = ['shoulder', 'arm', 'elbow', 'wrist', 'hand', 'finger', 'thumb', 'spine', 'chest', 'neck', 'head', 'hip', 'clavicle']
+  const bodyBones = bones.filter(name => 
+    bodyKeywords.some(keyword => name.toLowerCase().includes(keyword))
+  )
+  if (bodyBones.length > 0) {
+    console.log('🦴 Body/Arm bones found:', bodyBones.join(', '))
+  } else {
+    console.log('⚠️ No body/arm bones found in this model')
+  }
+  
+  // Log ALL bone names for detailed analysis
+  console.log('📋 Complete bone list:', bones.join(', '))
 }

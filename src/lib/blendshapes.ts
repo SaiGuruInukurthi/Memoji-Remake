@@ -5,6 +5,63 @@
  * Handles different naming conventions and provides fallback mappings.
  */
 
+// Standard ARKit blendshape order (52 shapes)
+// This order is used when morph targets are named numerically (0, 1, 2, etc.)
+export const ARKIT_BLENDSHAPE_ORDER = [
+  'eyeBlinkLeft',      // 0
+  'eyeLookDownLeft',   // 1
+  'eyeLookInLeft',     // 2
+  'eyeLookOutLeft',    // 3
+  'eyeLookUpLeft',     // 4
+  'eyeSquintLeft',     // 5
+  'eyeWideLeft',       // 6
+  'eyeBlinkRight',     // 7
+  'eyeLookDownRight',  // 8
+  'eyeLookInRight',    // 9
+  'eyeLookOutRight',   // 10
+  'eyeLookUpRight',    // 11
+  'eyeSquintRight',    // 12
+  'eyeWideRight',      // 13
+  'jawForward',        // 14
+  'jawLeft',           // 15
+  'jawRight',          // 16
+  'jawOpen',           // 17
+  'mouthClose',        // 18
+  'mouthFunnel',       // 19
+  'mouthPucker',       // 20
+  'mouthLeft',         // 21
+  'mouthRight',        // 22
+  'mouthSmileLeft',    // 23
+  'mouthSmileRight',   // 24
+  'mouthFrownLeft',    // 25
+  'mouthFrownRight',   // 26
+  'mouthDimpleLeft',   // 27
+  'mouthDimpleRight',  // 28
+  'mouthStretchLeft',  // 29
+  'mouthStretchRight', // 30
+  'mouthRollLower',    // 31
+  'mouthRollUpper',    // 32
+  'mouthShrugLower',   // 33
+  'mouthShrugUpper',   // 34
+  'mouthPressLeft',    // 35
+  'mouthPressRight',   // 36
+  'mouthLowerDownLeft',  // 37
+  'mouthLowerDownRight', // 38
+  'mouthUpperUpLeft',  // 39
+  'mouthUpperUpRight', // 40
+  'browDownLeft',      // 41
+  'browDownRight',     // 42
+  'browInnerUp',       // 43
+  'browOuterUpLeft',   // 44
+  'browOuterUpRight',  // 45
+  'cheekPuff',         // 46
+  'cheekSquintLeft',   // 47
+  'cheekSquintRight',  // 48
+  'noseSneerLeft',     // 49
+  'noseSneerRight',    // 50
+  'tongueOut',         // 51
+] as const
+
 // MediaPipe outputs these 52 ARKit-compatible blendshape names
 export const MEDIAPIPE_BLENDSHAPES = [
   '_neutral',
@@ -70,18 +127,26 @@ export interface BlendshapeData {
 // Common naming convention mappings
 // Key: MediaPipe name, Value: array of possible avatar morph target names
 const BLENDSHAPE_ALIASES: Record<string, string[]> = {
-  // Eye blinks - extensive aliases for various avatar formats
+  // Eye blinks - extensive aliases for various avatar formats including Ready Player Me
   eyeBlinkLeft: [
     'eyeBlinkLeft', 'eyeBlink_L', 'EyeBlink_L', 'eye_blink_left', 'leftEyeBlink',
     'EyesClosed_L', 'eyesClosed_L', 'eyes_closed_l', 'Blink_Left', 'blink_l',
     'EyeBlinkL', 'eyeBlinkL', 'LeftEyeBlink', 'left_eye_blink',
-    'EyesWink_L', 'eyesWink_L', 'Wink_L', 'wink_l'
+    'EyesWink_L', 'eyesWink_L', 'Wink_L', 'wink_l',
+    // Ready Player Me / ARKit style
+    'eyesClosed', 'EyesClosed', 'eyeBlink', 'EyeBlink',
+    'Wolf3D_Head.eyeBlinkLeft', 'Wolf3D_Avatar.eyeBlinkLeft',
+    'blinkLeft', 'BlinkLeft', 'blink_left'
   ],
   eyeBlinkRight: [
     'eyeBlinkRight', 'eyeBlink_R', 'EyeBlink_R', 'eye_blink_right', 'rightEyeBlink',
     'EyesClosed_R', 'eyesClosed_R', 'eyes_closed_r', 'Blink_Right', 'blink_r',
     'EyeBlinkR', 'eyeBlinkR', 'RightEyeBlink', 'right_eye_blink',
-    'EyesWink_R', 'eyesWink_R', 'Wink_R', 'wink_r'
+    'EyesWink_R', 'eyesWink_R', 'Wink_R', 'wink_r',
+    // Ready Player Me / ARKit style
+    'eyesClosed', 'EyesClosed', 'eyeBlink', 'EyeBlink',
+    'Wolf3D_Head.eyeBlinkRight', 'Wolf3D_Avatar.eyeBlinkRight',
+    'blinkRight', 'BlinkRight', 'blink_right'
   ],
   
   // Eye look
@@ -167,6 +232,25 @@ export function createBlendshapeMapping(
   const availableTargets = Object.keys(morphTargetDictionary)
   const availableTargetsLower = availableTargets.map((t) => t.toLowerCase())
 
+  // Check if this model uses numeric morph target names (0, 1, 2, etc.)
+  // This is common when ARKit blendshapes are exported without names
+  const hasNumericNames = availableTargets.length > 50 && 
+    availableTargets.some(name => /^\d+$/.test(name))
+  
+  if (hasNumericNames) {
+    console.log('Detected numeric morph target names - using ARKit index mapping')
+    // Map using the standard ARKit blendshape order
+    for (let i = 0; i < ARKIT_BLENDSHAPE_ORDER.length; i++) {
+      const arkitName = ARKIT_BLENDSHAPE_ORDER[i]
+      const numericKey = String(i)
+      if (morphTargetDictionary[numericKey] !== undefined) {
+        mapping.set(arkitName, morphTargetDictionary[numericKey])
+      }
+    }
+    return mapping
+  }
+
+  // Standard name-based mapping
   for (const [mediaPipeName, aliases] of Object.entries(BLENDSHAPE_ALIASES)) {
     // Try exact match first
     if (morphTargetDictionary[mediaPipeName] !== undefined) {
@@ -187,6 +271,32 @@ export function createBlendshapeMapping(
       if (matchIndex !== -1) {
         const actualName = availableTargets[matchIndex]
         mapping.set(mediaPipeName, morphTargetDictionary[actualName])
+        break
+      }
+    }
+  }
+
+  // Fuzzy matching fallback for critical blendshapes (eye blinks)
+  // If not found through aliases, try to find by pattern matching
+  if (!mapping.has('eyeBlinkLeft')) {
+    for (const target of availableTargets) {
+      const lower = target.toLowerCase()
+      if ((lower.includes('blink') || lower.includes('closed')) && 
+          (lower.includes('left') || lower.includes('_l') || lower.endsWith('l'))) {
+        mapping.set('eyeBlinkLeft', morphTargetDictionary[target])
+        console.log(`Fuzzy matched eyeBlinkLeft to: ${target}`)
+        break
+      }
+    }
+  }
+
+  if (!mapping.has('eyeBlinkRight')) {
+    for (const target of availableTargets) {
+      const lower = target.toLowerCase()
+      if ((lower.includes('blink') || lower.includes('closed')) && 
+          (lower.includes('right') || lower.includes('_r') || lower.endsWith('r'))) {
+        mapping.set('eyeBlinkRight', morphTargetDictionary[target])
+        console.log(`Fuzzy matched eyeBlinkRight to: ${target}`)
         break
       }
     }
@@ -219,10 +329,13 @@ export function applyBlendshapes(
     const value = blendshapeData[mediaPipeName] ?? 0
     const currentValue = morphTargetInfluences[targetIndex] ?? 0
     
-    // Use faster smoothing for eye blinks (more responsive)
-    const effectiveSmoothing = FAST_RESPONSE_BLENDSHAPES.has(mediaPipeName) 
-      ? Math.min(smoothingFactor * 1.8, 0.9) // Faster for blinks
-      : smoothingFactor
+    // Use much faster smoothing for eye blinks - almost direct application
+    let effectiveSmoothing = smoothingFactor
+    if (FAST_RESPONSE_BLENDSHAPES.has(mediaPipeName)) {
+      // For closing eyes (value increasing), use very fast response
+      // For opening eyes (value decreasing), also use fast response
+      effectiveSmoothing = 0.85 // Very responsive
+    }
     
     // Apply exponential smoothing for natural movement
     morphTargetInfluences[targetIndex] =
@@ -284,6 +397,22 @@ export function logMappingCoverage(
   console.log(`Blendshape mapping coverage:`)
   console.log(`  MediaPipe blendshapes mapped: ${mappedCount}/${totalMediaPipe}`)
   console.log(`  Avatar morph targets available: ${totalMorphTargets}`)
+  
+  // Log eye blink mapping specifically
+  const eyeBlinkL = blendshapeMapping.get('eyeBlinkLeft')
+  const eyeBlinkR = blendshapeMapping.get('eyeBlinkRight')
+  const eyeLookInL = blendshapeMapping.get('eyeLookInLeft')
+  const eyeLookOutL = blendshapeMapping.get('eyeLookOutLeft')
+  
+  console.log(`  Eye blink mapping: L=${eyeBlinkL ?? 'NOT FOUND'}, R=${eyeBlinkR ?? 'NOT FOUND'}`)
+  console.log(`  Eye look mapping: InL=${eyeLookInL ?? 'NOT FOUND'}, OutL=${eyeLookOutL ?? 'NOT FOUND'}`)
+  
+  if (eyeBlinkL === undefined || eyeBlinkR === undefined) {
+    console.warn('⚠️ This avatar does NOT have eye blink blendshapes!')
+    console.warn('   The avatar only has these morph targets:', Object.keys(morphTargetDictionary || {}).join(', '))
+    console.warn('   To enable blinking, use an avatar with ARKit blendshapes.')
+    console.warn('   Ready Player Me avatars need "?morphTargets=ARKit" in the URL.')
+  }
   
   // Log unmapped blendshapes
   const unmapped = Object.keys(BLENDSHAPE_ALIASES).filter(

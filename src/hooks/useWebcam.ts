@@ -8,7 +8,7 @@ interface UseWebcamOptions {
 }
 
 interface UseWebcamReturn {
-  videoRef: React.RefObject<HTMLVideoElement | null>
+  videoRef: React.RefObject<HTMLVideoElement>
   isReady: boolean
   error: string | null
   aspectRatio: number
@@ -16,7 +16,7 @@ interface UseWebcamReturn {
 
 export function useWebcam(options: UseWebcamOptions = {}): UseWebcamReturn {
   const { width = 1280, height = 720 } = options
-  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const videoRef = useRef<HTMLVideoElement>(null!)
   const [isReady, setIsReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [aspectRatio, setAspectRatio] = useState(width / height)
