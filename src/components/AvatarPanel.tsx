@@ -2,7 +2,7 @@
 
 import { useRef, useEffect, Suspense, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { useGLTF, OrthographicCamera, Environment, Grid, Html, useProgress } from '@react-three/drei'
+import { useGLTF, OrthographicCamera, Grid, Html, useProgress } from '@react-three/drei'
 import * as THREE from 'three'
 import {
   BlendshapeData,
@@ -307,9 +307,6 @@ export function AvatarPanel({
 
           {/* Axes helper for X/Y/Z reference */}
           <axesHelper args={[2]} position={[-3, -2, 0]} />
-
-          {/* Environment for nice reflections */}
-          <Environment preset="studio" />
 
           {/* Avatar with Suspense for loading */}
           <Suspense fallback={<Loader />}>
